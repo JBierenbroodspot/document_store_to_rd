@@ -23,7 +23,7 @@ class MongoDBController:
     client: pymongo.MongoClient
     connection_string: str
 
-    def __init__(self, hostname: str | None = None, port: str | None = None) -> None:
+    def __init__(self, hostname: typing.Union[str, None] = None, port: typing.Union[str, None] = None) -> None:
         """Initializes connection string for MongoDB database connection."""
         mongo_port: str = port if port else os.getenv('MONGODB_PORT')
         mongo_host: str = hostname if hostname else os.getenv('MONGODB_HOSTNAME')
