@@ -10,17 +10,18 @@ import dotenv
 import pymongo
 from pymongo import database  # Pymongo is imported again because IDE won't recognize database.
 
-from document_store import connect_mongodb
+from document_store import mongodb_controller
 
 dotenv.load_dotenv()
 
 
 def main() -> None:
-    _init_logging()
-    mongo_database: pymongo.database.Database = connect_mongodb.connect_to_mongodb()
+    mongo_database: pymongo.database.Database = mongodb_controller.connect_to_mongodb()
     products_collection: pymongo.collection.Collection = mongo_database.get_collection('products')
-    print(products_collection.find_one()['name'], products_collection.find_one()['price']['selling_price'])
-    print(products_collection.find_one({'name': ''}))
+    sessions_collection: pymongo.collection.Collection = mongo_database.get_collection('sessions')
+    sessions_collection: pymongo.collection.Collection = mongo_database.get_collection('visitors')
+
+    _init_logging()
 
 
 def _init_logging() -> None:

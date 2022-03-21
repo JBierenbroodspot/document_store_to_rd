@@ -45,7 +45,3 @@ def connect_to_mongodb(hostname: str | None = None,
     logging.info(f'Connected to database {mongo_database.name}!')
 
     return mongo_database
-
-
-if __name__ == '__main__':
-    connect_to_mongodb()
