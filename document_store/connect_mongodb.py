@@ -12,11 +12,12 @@ from pymongo import errors
 import dotenv
 
 
-def connect_to_mongodb(hostname: str | None = None, port: str | None = None) -> None:
+def connect_to_mongodb(hostname: str | None = None, port: str | None = None, db_name: str | None = None) -> None:
     mongo_client: pymongo.MongoClient
 
     mongo_port: str = port if port else os.getenv("MONGODB_PORT")
     mongo_host: str = hostname if hostname else os.getenv("MONGODB_HOSTNAME")
+    mongo_db_name: str = db_name if db_name else os.getenv("DATABASE_NAME")
 
     mongo_database: pymongo.database.Database | None = None
     connection_string: str = f"mongodb://{mongo_host}:{mongo_port}"
@@ -25,7 +26,7 @@ def connect_to_mongodb(hostname: str | None = None, port: str | None = None) -> 
 
     try:
         mongo_client = pymongo.MongoClient(connection_string)
-        mongo_database = mongo_client.op_is_op
+        mongo_database = mongo_client.get_database(mongo_db_name)
     except pymongo.errors.ConnectionFailure as err:
         logging.error("Connection failed", err)
 
