@@ -209,7 +209,7 @@ class TypeObject(FieldBaseClass):
         if not isinstance(self.children, list):
             if self.children != typed:
                 self.children = [self.children, typed]
-                return
+            return
 
         if typed not in self.children:
             self.children.append(typed)
