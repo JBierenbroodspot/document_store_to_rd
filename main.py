@@ -3,8 +3,10 @@
 #  Copyright (c) 2022 Jimmy Bierenbroodspot.                                                                           -
 # ----------------------------------------------------------------------------------------------------------------------
 """Main entry point of application."""
+import os
 import typing
 import logging
+import json
 
 import dotenv
 import pymongo
@@ -16,12 +18,18 @@ dotenv.load_dotenv()
 
 
 def main() -> None:
-    mongo_database: pymongo.database.Database = mongodb_controller.connect_to_mongodb()
-    products_collection: pymongo.collection.Collection = mongo_database.get_collection('products')
-    sessions_collection: pymongo.collection.Collection = mongo_database.get_collection('sessions')
-    sessions_collection: pymongo.collection.Collection = mongo_database.get_collection('visitors')
-
     _init_logging()
+
+    controller: mongodb_controller.MongoDBController = mongodb_controller.MongoDBController()
+    controller.connect()
+    controller.set_current_database(os.getenv('DATABASE_NAME'))
+    controller.set_fields()
+
+    with open('data/schema.json', 'w+') as file:
+        print(controller.fields)
+        file.write(json.dumps(controller.fields))
+
+    print(controller.fields)
 
 
 def _init_logging() -> None:
