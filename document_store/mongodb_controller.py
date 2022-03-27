@@ -14,6 +14,7 @@ import collections
 from collections import abc
 import abc
 
+import bson.objectid
 import pymongo
 from pymongo import database
 from pymongo import errors
@@ -42,6 +43,7 @@ class MongoDBController:
 
         :return: A MongoClient instance if connection was successful.
         """
+        err: pymongo.errors.PyMongoError
         logging.info('Connecting to database...')
 
         try:
@@ -58,6 +60,7 @@ class MongoDBController:
         :param database_name: Name of database to select.
         :return: None.
         """
+        err: pymongo.errors.PyMongoError
         self.fields = {}  # Reset field names.
 
         try:
@@ -75,11 +78,10 @@ class MongoDBController:
         :param sample_size: The amount of documents you want to scan for each collection.
         :return: None.
         """
+        documents: pymongo.collection.Cursor
+        document: typing.Dict
 
         for collection in self.database.list_collection_names():
-            documents: pymongo.collection.Cursor
-            document: typing.Dict
-
             documents = self.database.get_collection(collection).find()
 
             if sample_size > 0:
@@ -144,11 +146,11 @@ class DocumentObject(FieldBaseClass):
         self.children = {}
         self.update(document)
 
-    def update(self, document: typing.Dict) -> None:
+    def update(self, document: typing.Dict[str, typing.Any]) -> None:
         """Scans a document and either appends a non-existing key to its children or updates an existing key with a new
         type.
 
-        :param document:
+        :param document: A dictionary.
         :return:
         """
         key: str
@@ -167,13 +169,18 @@ class DocumentObject(FieldBaseClass):
             self.children[key] = {}
             self.children[key][value_type] = bind_to_object(value_type)(value)
 
-    def as_json(self) -> typing.Dict:
-        out: typing.Dict = {}
+    def as_json(self) -> typing.Dict[str, typing.Any]:
+        child_key: str
+        child_value: typing.Dict[str, typing.Any]
+        sub_key: str
+        sub_value: typing.Any
 
-        for key, value in self.children.items():
-            for key_2, value_2 in value.items():
-                out[key] = {}
-                out[key][key_2] = value_2.as_json()
+        out: typing.Dict[str, typing.Any] = {}
+
+        for child_key, child_value in self.children.items():
+            for sub_key, sub_value in child_value.items():
+                out[child_key] = {}
+                out[child_key][sub_key] = sub_value.as_json()
 
         return out
 
@@ -230,7 +237,7 @@ class IterableObject(FieldBaseClass):
         """Updates the list with new types by updating the objects within the children list.
 
         :param __iterable: An iterable.
-        :return:
+        :return: None.
         """
         value_type: typing.Type[IterableObject, TypeObject, DocumentObject]
         existing_item: typing.List[typing.Type[IterableObject, TypeObject, DocumentObject]]
@@ -250,6 +257,12 @@ class IterableObject(FieldBaseClass):
 
 
 def bind_to_object(object_string: str) -> typing.Type[typing.Union[TypeObject, IterableObject, DocumentObject]]:
+    """Takes a specific string and returns an object that matches it.
+
+    :param object_string: A string that is either 'object', 'list' or 'single_type'.
+    :returns: A DocumentObject if object_string is 'object', IterableObject if object_string is 'list' otherwise
+    TypeObject.
+    """
     if object_string == "object":
         return DocumentObject
     elif object_string == "list":
