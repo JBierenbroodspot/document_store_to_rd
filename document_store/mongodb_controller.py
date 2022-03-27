@@ -111,6 +111,10 @@ class FieldBaseClass:
         str: "single_type",
         int: "single_type",
         datetime.datetime: "single_type",
+        type(None): "single_type",
+        bool: "single_type",
+        float: "single_type",
+        bson.objectid.ObjectId: "single_type",
     }
 
     @abc.abstractmethod
@@ -228,39 +232,18 @@ class IterableObject(FieldBaseClass):
         :param __iterable: An iterable.
         :return:
         """
+        value_type: typing.Type[IterableObject, TypeObject, DocumentObject]
+        existing_item: typing.List[typing.Type[IterableObject, TypeObject, DocumentObject]]
+
         for value in __iterable:
-            if isinstance(value, dict):
-                item: DocumentObject
+            value_type = bind_to_object(self.type_map[type(value)])
+            existing_item = [child for child in self.children if type(child) is value_type]
 
-                for item in self.children:
-                    if isinstance(item, DocumentObject):
-                        item.update(value)
-                        break
+            if existing_item:
+                existing_item[0].update(value)
+                break
 
-                else:
-                    self.children.append(DocumentObject(value))
-
-            elif isinstance(value, collections.abc.Iterable) and not isinstance(value, str):
-                item: IterableObject
-
-                for item in self.children:
-                    if isinstance(item, IterableObject):
-                        item.update(value)
-                        break
-
-                else:
-                    self.children.append(IterableObject(value))
-
-            else:
-                item: TypeObject
-
-                for item in self.children:
-                    if isinstance(item, TypeObject):
-                        item.update(value)
-                        break
-
-                else:
-                    self.children.append(TypeObject(value))
+            self.children.append(value_type(value))
 
     def as_json(self) -> typing.List:
         return [item.as_json() for item in self.children]
