@@ -90,7 +90,6 @@ class MongoDBController:
             self.fields[collection] = DocumentObject(documents.next())  # Set first value so it can be updated.
 
             for count, document in enumerate(documents):
-                print("New document")
                 self.fields[collection].update(document)
                 print("Processed", count, "items!")
 
