@@ -5,6 +5,8 @@
 """Connects to a mongodb database. This module can be used without dotenv, but it is recommended as it automates
 things"""
 from __future__ import annotations
+
+import datetime
 import os
 import logging
 import typing
@@ -97,6 +99,19 @@ class FieldBaseClass:
     """An abstract base class created to save a little bit of space by allowing to omit some docstrings."""
     __metaclass__ = abc.ABCMeta
     children: typing.Union[typing.Dict[str], typing.List, typing.Type]
+    # Hashmap :)))
+    # Defining every type here is arguably not the most solid way to do this, but it greatly improves performance by not
+    # having to iterate over anything rather the value can be retrieved with a simple single expression.
+    type_map: typing.Dict[typing.Type, str, typing.Type] = {
+        dict: "object",
+        collections.abc.Iterable: "list",
+        list: "list",
+        tuple: "list",
+        set: "list",
+        str: "single_type",
+        int: "single_type",
+        datetime.datetime: "single_type",
+    }
 
     @abc.abstractmethod
     def update(self, __value: definitions.T) -> None:
@@ -134,37 +149,19 @@ class DocumentObject(FieldBaseClass):
         """
         key: str
         value: typing.Union[typing.Any, typing.Dict, typing.Iterable]
+        value_type: str
+        child_value: FieldBaseClass
 
         for key, value in document.items():
-            if isinstance(value, dict):
-                child_value: DocumentObject = self.children.get(key, {}).get("object")
+            value_type = self.type_map[type(value)]
+            child_value = self.children.get(key, {}).get(value_type)
 
-                if child_value:
-                    child_value.update(value)
+            if child_value:
+                child_value.update(value)
+                continue
 
-                else:
-                    self.children[key] = {}
-                    self.children[key]["object"] = DocumentObject(value)
-
-            elif isinstance(value, collections.abc.Iterable) and not isinstance(value, str):
-                child_value: IterableObject = self.children.get(key, {}).get("list")
-
-                if child_value:
-                    child_value.update(value)
-
-                else:
-                    self.children[key] = {}
-                    self.children[key]["list"] = IterableObject(value)
-
-            else:
-                child_value: TypeObject = self.children.get(key, {}).get("single_type")
-
-                if child_value:
-                    child_value.update(value)
-
-                else:
-                    self.children[key] = {}
-                    self.children[key]["single_type"] = TypeObject(value)
+            self.children[key] = {}
+            self.children[key][value_type] = bind_to_object(value_type)(value)
 
     def as_json(self) -> typing.Dict:
         out: typing.Dict = {}
@@ -267,3 +264,12 @@ class IterableObject(FieldBaseClass):
 
     def as_json(self) -> typing.List:
         return [item.as_json() for item in self.children]
+
+
+def bind_to_object(object_string: str) -> typing.Type[typing.Union[TypeObject, IterableObject, DocumentObject]]:
+    if object_string == "object":
+        return DocumentObject
+    elif object_string == "list":
+        return IterableObject
+    else:
+        return TypeObject
