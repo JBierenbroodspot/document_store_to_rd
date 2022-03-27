@@ -10,6 +10,7 @@ import logging
 import typing
 import json
 import collections
+from collections import abc
 
 import pymongo
 from pymongo import database
@@ -65,116 +66,147 @@ class MongoDBController:
 
         logging.info(f'selected {database_name}.')
 
-    def set_fields(self, skip: int = 1, sample_size: int = 0) -> None:
+    def set_fields(self, sample_size: int = 0) -> None:
 
         for collection in self.database.list_collection_names():
-            cursor = self.database.get_collection(collection).find()
+            documents: pymongo.collection.Cursor
+            document: typing.Dict
+
+            documents = self.database.get_collection(collection).find()
+
             if sample_size > 0:
-                cursor = cursor.limit(sample_size)
-            self.fields[collection] = FieldNode(cursor, skip=skip).as_dict()
+                documents = documents.limit(sample_size)
+
+            self.fields[collection] = DocumentObject(documents.next())  # Set first value so it can be updated.
+
+            for count, document in enumerate(documents):
+                print("New document")
+                self.fields[collection].update(document)
+                print("Processed", count, "items!")
+
+            self.fields[collection] = self.fields[collection].as_json()
 
 
-class FieldNode:
-    """Stores fieldnames and datatypes of a MongoDB document store."""
+class DocumentObject:
+    children: typing.Dict
 
-    def __init__(self, cursor_object: typing.Optional[pymongo.collection.Cursor] = None,
-                 dict_object: typing.Optional[typing.Dict] = None,
-                 skip: int = 1) -> None:
-        count: int
-        cursor_item: typing.Dict[str, typing.Any]
-        _dict: typing.Dict = collections.defaultdict(set)
-
-        if not dict_object:
-            print("Scanning...")
-            for count, cursor_item in enumerate(cursor_object):
-                if count % skip == 0:
-                    self.scan_dict(cursor_item)
-                    print('Processed', count, 'items!')
-        else:
-            self.scan_dict(dict_object)
-
-    def scan_dict(self, cursor_item: typing.Dict[str, typing.Any]) -> None:
-        """Scans a dictionary and adds an attribute for every unknown attribute. If a property exists the type of the
-        value will be added to that attribute.
-
-        :param cursor_item: A dictionary.
-        :return: None.
-        """
-        field_name: str
-        value: typing.Any
-        item: typing.Any
-
-        for field_name, value in cursor_item.items():
-            if not hasattr(self, field_name):
-                self._set_field(field_name, value)
-            else:
-                self._add_type(field_name, value)
-
-    def as_dict(self) -> typing.Dict:
-        _dict: typing.Dict = {}
+    def __init__(self, document: typing.Dict) -> None:
         key: str
-        value: typing.Union[typing.Any, FieldNode]
+        value: typing.Union[typing.Any, typing.Dict, typing.Iterable]
+        self.children = {}
+        self.update(document)
 
-        for key, value in self.__dict__.items():
-            _list = []
+    def update(self, document: typing.Dict) -> None:
+        key: str
+        value: typing.Union[typing.Any, typing.Dict, typing.Iterable]
 
-            for item in value:
-                if type(item) == FieldNode:
-                    _list.append(item.as_dict())
-                elif type(item) == list:
-                    _list.append([x.as_dict() if type(x) == FieldNode else x for x in item])
+        for key, value in document.items():
+            if isinstance(value, dict):
+                child_value: DocumentObject = self.children.get(key, {}).get("object")
+
+                if child_value:
+                    child_value.update(value)
+
                 else:
-                    _list = item
+                    self.children[key] = {}
+                    self.children[key]["object"] = DocumentObject(value)
 
-            _dict[key] = _list
+            elif isinstance(value, collections.abc.Iterable) and not isinstance(value, str):
+                child_value: IterableObject = self.children.get(key, {}).get("list")
 
-        return _dict
+                if child_value:
+                    child_value.update(value)
 
-    def _set_field(self, _field_name: str, _value: typing.Any) -> None:
-        value_type: typing.Type = type(_value)
+                else:
+                    self.children[key] = {}
+                    self.children[key]["list"] = IterableObject(value)
 
-        if value_type == dict:
-            setattr(self, _field_name, [FieldNode(dict_object=_value)])
-        elif value_type == list:
-            setattr(self, _field_name, [list({str(type(item)) for item in _value})])
+            else:
+                child_value: TypeObject = self.children.get(key, {}).get("single_type")
+
+                if child_value:
+                    child_value.update(value)
+
+                else:
+                    self.children[key] = {}
+                    self.children[key]["single_type"] = TypeObject(value)
+
+    def as_json(self) -> typing.Dict:
+        out: typing.Dict = {}
+
+        for key, value in self.children.items():
+            for key_2, value_2 in value.items():
+                out[key] = {}
+                out[key][key_2] = value_2.as_json()
+
+        return out
+
+
+class TypeObject:
+    children: typing.Union[typing.Type, typing.List[typing.Type]]
+
+    def __init__(self, untyped: typing.Any) -> None:
+        self.children = type(untyped)
+
+    def update(self, untyped: typing.Any) -> None:
+        typed: typing.Type = type(untyped)
+
+        if not isinstance(self.children, list):
+            if self.children != typed:
+                self.children = [self.children, typed]
+
         else:
-            setattr(self, _field_name, [str(value_type)])
+            if typed not in self.children:
+                self.children.append(typed)
 
-    def _add_type(self, _field_name: str, _value: typing.Any) -> None:
-        field_node: FieldNode
-        field_list: typing.List
-        values: typing.Union[FieldNode, typing.List]
-        value_type: typing.Type = type(_value)
+    def as_json(self) -> typing.Union[str, typing.List[str]]:
+        if not isinstance(self.children, list):
+            return str(self.children)
 
-        if value_type == dict:
-            self._add_dict_attribute(_field_name, _value)
-        elif value_type == list:
-            self._add_list_attribute(_field_name, _value)
-        else:
-            field_list = list(set(list(getattr(self, _field_name)) + [str(value_type)]))
-            setattr(self, _field_name, field_list)
+        return [str(child) for child in self.children]
 
-    def _add_dict_attribute(self, _attr_name: str, _value: typing.Dict) -> None:
-        old_values: typing.List = getattr(self, _attr_name)
 
-        for old_value in old_values:
-            if type(old_value) == FieldNode:
-                old_value._set_field(_attr_name, _value)
-                break
-        else:
-            old_values.append(FieldNode(dict_object=_value))
+class IterableObject:
+    children: typing.List
 
-        setattr(self, _attr_name, old_values)
+    def __init__(self, __iterable: typing.Iterable) -> None:
+        self.children = []
+        self.update(__iterable)
 
-    def _add_list_attribute(self, _attr_name: str, _value: typing.List) -> None:
-        old_values: typing.List = getattr(self, _attr_name)
-        typed_values: typing.List[str] = list({str(type(value)) for value in _value})
+    def update(self, __iterable: typing.Iterable) -> None:
+        for value in __iterable:
+            if isinstance(value, dict):
+                item: DocumentObject
 
-        for old_value in old_values:
-            if type(old_value) == list:
-                old_value.extend(typed_value for typed_value in typed_values if typed_value not in old_value)
-                break
-        else:
-            old_values.append(typed_values)
+                for item in self.children:
+                    if isinstance(item, DocumentObject):
+                        item.update(value)
+                        break
 
-        setattr(self, _attr_name, old_values)
+                else:
+                    self.children.append(DocumentObject(value))
+
+            elif isinstance(value, collections.abc.Iterable) and not isinstance(value, str):
+                item: IterableObject
+
+                for item in self.children:
+                    if isinstance(item, IterableObject):
+                        item.update(value)
+                        break
+
+                else:
+                    self.children.append(IterableObject(value))
+
+            else:
+                item: TypeObject
+
+                for item in self.children:
+                    if isinstance(item, TypeObject):
+                        item.update(value)
+                        break
+
+                else:
+                    self.children.append(TypeObject(value))
+
+    def as_json(self) -> typing.List:
+        return [item.as_json() for item in self.children]
