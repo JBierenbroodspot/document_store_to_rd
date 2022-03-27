@@ -209,10 +209,10 @@ class TypeObject(FieldBaseClass):
         if not isinstance(self.children, list):
             if self.children != typed:
                 self.children = [self.children, typed]
+                return
 
-        else:
-            if typed not in self.children:
-                self.children.append(typed)
+        if typed not in self.children:
+            self.children.append(typed)
 
     def as_json(self) -> typing.Union[str, typing.List[str]]:
         if not isinstance(self.children, list):
