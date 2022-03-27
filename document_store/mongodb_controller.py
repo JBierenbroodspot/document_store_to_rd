@@ -67,6 +67,12 @@ class MongoDBController:
         logging.info(f'selected {database_name}.')
 
     def set_fields(self, sample_size: int = 0) -> None:
+        """Scans every collection and finds out the following things: What fields every document has, the whether it is
+        a nested datatype and the datatypes of every field recursively.
+
+        :param sample_size: The amount of documents you want to scan for each collection.
+        :return: None.
+        """
 
         for collection in self.database.list_collection_names():
             documents: pymongo.collection.Cursor
@@ -88,15 +94,27 @@ class MongoDBController:
 
 
 class DocumentObject:
+    """A type that contains a dictionary-like structure containing datatypes or more objects."""
     children: typing.Dict
 
     def __init__(self, document: typing.Dict) -> None:
+        """Initializes children parameter with values from a dictionary.
+
+        :param document: A dictionary.
+        """
         key: str
         value: typing.Union[typing.Any, typing.Dict, typing.Iterable]
+
         self.children = {}
         self.update(document)
 
     def update(self, document: typing.Dict) -> None:
+        """Scans a document and either appends a non-existing key to its children or updates an existing key with a new
+        type.
+
+        :param document:
+        :return:
+        """
         key: str
         value: typing.Union[typing.Any, typing.Dict, typing.Iterable]
 
@@ -132,6 +150,10 @@ class DocumentObject:
                     self.children[key]["single_type"] = TypeObject(value)
 
     def as_json(self) -> typing.Dict:
+        """Converts object into a json-serializable object.
+
+        :return: A json serializable dictionary.
+        """
         out: typing.Dict = {}
 
         for key, value in self.children.items():
@@ -143,12 +165,24 @@ class DocumentObject:
 
 
 class TypeObject:
+    """And object used for storing a types that are not iterables. If types are stored in this object it suggests
+    that a field containing this object is a single type as opposed to an iterable. It can either store a single type
+    or a list of types."""
     children: typing.Union[typing.Type, typing.List[typing.Type]]
 
     def __init__(self, untyped: typing.Any) -> None:
+        """Initializes with a single type.
+
+        :param untyped: Any value that is not an instance of type.
+        """
         self.children = type(untyped)
 
     def update(self, untyped: typing.Any) -> None:
+        """Adds a type to itself if it does not exist already, otherwise it is ignored.
+
+        :param untyped: Any value that is not an instance of type.
+        :return: None.
+        """
         typed: typing.Type = type(untyped)
 
         if not isinstance(self.children, list):
@@ -160,6 +194,10 @@ class TypeObject:
                 self.children.append(typed)
 
     def as_json(self) -> typing.Union[str, typing.List[str]]:
+        """Converts object into a json-serializable object.
+
+        :return: A json serializable dictionary.
+        """
         if not isinstance(self.children, list):
             return str(self.children)
 
@@ -167,13 +205,23 @@ class TypeObject:
 
 
 class IterableObject:
+    """Represents a field that is an array of other values."""
     children: typing.List
 
     def __init__(self, __iterable: typing.Iterable) -> None:
+        """Initializes with a single iterable.
+
+        :param __iterable: Any iterable.
+        """
         self.children = []
         self.update(__iterable)
 
     def update(self, __iterable: typing.Iterable) -> None:
+        """Updates the list with new types by updating the objects within the children list.
+
+        :param __iterable: An iterable.
+        :return:
+        """
         for value in __iterable:
             if isinstance(value, dict):
                 item: DocumentObject
@@ -209,4 +257,8 @@ class IterableObject:
                     self.children.append(TypeObject(value))
 
     def as_json(self) -> typing.List:
+        """Converts object into a json-serializable object.
+
+        :return: A json serializable dictionary.
+        """
         return [item.as_json() for item in self.children]
