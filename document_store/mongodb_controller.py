@@ -8,9 +8,9 @@ from __future__ import annotations
 import os
 import logging
 import typing
-import json
 import collections
 from collections import abc
+import abc
 
 import pymongo
 from pymongo import database
@@ -93,7 +93,24 @@ class MongoDBController:
             self.fields[collection] = self.fields[collection].as_json()
 
 
-class DocumentObject:
+class FieldBaseClass:
+    """An abstract base class created to save a little bit of space by allowing to omit some docstrings."""
+    __metaclass__ = abc.ABCMeta
+    children: typing.Union[typing.Dict[str], typing.List, typing.Type]
+
+    @abc.abstractmethod
+    def update(self, __value: definitions.T) -> None:
+        pass
+
+    def as_json(self) -> typing.Dict[str]:
+        """Converts object into a json-serializable object.
+
+        :return: A json serializable dictionary.
+        """
+        pass
+
+
+class DocumentObject(FieldBaseClass):
     """A type that contains a dictionary-like structure containing datatypes or more objects."""
     children: typing.Dict
 
@@ -150,10 +167,6 @@ class DocumentObject:
                     self.children[key]["single_type"] = TypeObject(value)
 
     def as_json(self) -> typing.Dict:
-        """Converts object into a json-serializable object.
-
-        :return: A json serializable dictionary.
-        """
         out: typing.Dict = {}
 
         for key, value in self.children.items():
@@ -164,7 +177,7 @@ class DocumentObject:
         return out
 
 
-class TypeObject:
+class TypeObject(FieldBaseClass):
     """And object used for storing a types that are not iterables. If types are stored in this object it suggests
     that a field containing this object is a single type as opposed to an iterable. It can either store a single type
     or a list of types."""
@@ -194,17 +207,13 @@ class TypeObject:
                 self.children.append(typed)
 
     def as_json(self) -> typing.Union[str, typing.List[str]]:
-        """Converts object into a json-serializable object.
-
-        :return: A json serializable dictionary.
-        """
         if not isinstance(self.children, list):
             return str(self.children)
 
         return [str(child) for child in self.children]
 
 
-class IterableObject:
+class IterableObject(FieldBaseClass):
     """Represents a field that is an array of other values."""
     children: typing.List
 
@@ -257,8 +266,4 @@ class IterableObject:
                     self.children.append(TypeObject(value))
 
     def as_json(self) -> typing.List:
-        """Converts object into a json-serializable object.
-
-        :return: A json serializable dictionary.
-        """
         return [item.as_json() for item in self.children]
